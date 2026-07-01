@@ -31,4 +31,18 @@ enum StorageSystem: string
      * Best for high-performance production use.
      */
     case CACHE = 'cache';
+
+    /**
+     * Session-based storage using PHP's $_SESSION superglobal.
+     * Data is stored in the user's session and persists across requests.
+     * Requires session_start() to be called before usage.
+     */
+    case SESSION = 'session';
+
+    /**
+     * Cookie-based storage using PHP's setcookie() function.
+     * Data is stored in the user's browser cookies.
+     * Data is limited by cookie size (4KB) and number of cookies.
+     */
+    case COOKIE = 'cookie';
 }

@@ -10,13 +10,15 @@ use AndyDefer\StorageKit\Enums\CacheDriver;
 use AndyDefer\StorageKit\Enums\StorageSystem;
 use AndyDefer\StorageKit\Records\CacheConfigRecord;
 use AndyDefer\StorageKit\Storage\CacheStorage;
+use AndyDefer\StorageKit\Storage\CookieStorage;
 use AndyDefer\StorageKit\Storage\JsonlStorage;
 use AndyDefer\StorageKit\Storage\MemoryStorage;
+use AndyDefer\StorageKit\Storage\SessionStorage;
 
 /**
  * Factory for creating storage instances.
  *
- * Supports creation of MemoryStorage, JsonlStorage, and CacheStorage.
+ * Supports creation of MemoryStorage, JsonlStorage, CacheStorage, SessionStorage, and CookieStorage.
  *
  * @example
  * $factory = new StorageFactory('/var/data', 3600);
@@ -46,6 +48,8 @@ final class StorageFactory implements StorageFactoryInterface
             StorageSystem::MEMORY => $this->createMemoryStorage(),
             StorageSystem::JSONL => $this->createJsonlStorage(),
             StorageSystem::CACHE => $this->createCacheStorage(),
+            StorageSystem::SESSION => $this->createSessionStorage(),
+            StorageSystem::COOKIE => $this->createCookieStorage(),
         };
     }
 
@@ -98,6 +102,31 @@ final class StorageFactory implements StorageFactoryInterface
             driver: CacheDriver::SQLITE,
             config: $config,
             cacheKeyPrefix: 'storage_',
+        );
+    }
+
+    public function createSessionStorage(string $namespace = 'storage_kit'): SessionStorage
+    {
+        return new SessionStorage($namespace);
+    }
+
+    public function createCookieStorage(
+        string $prefix = 'storage_',
+        ?int $expires = null,
+        ?string $domain = null,
+        string $path = '/',
+        bool $secure = false,
+        bool $httpOnly = true,
+        ?string $sameSite = 'Lax'
+    ): CookieStorage {
+        return new CookieStorage(
+            prefix: $prefix,
+            expires: $expires,
+            domain: $domain,
+            path: $path,
+            secure: $secure,
+            httpOnly: $httpOnly,
+            sameSite: $sameSite
         );
     }
 

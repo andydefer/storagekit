@@ -10,8 +10,10 @@ use AndyDefer\StorageKit\Enums\StorageSystem;
 use AndyDefer\StorageKit\Factory\StorageFactory;
 use AndyDefer\StorageKit\Records\CacheConfigRecord;
 use AndyDefer\StorageKit\Storage\CacheStorage;
+use AndyDefer\StorageKit\Storage\CookieStorage;
 use AndyDefer\StorageKit\Storage\JsonlStorage;
 use AndyDefer\StorageKit\Storage\MemoryStorage;
+use AndyDefer\StorageKit\Storage\SessionStorage;
 use PHPUnit\Framework\TestCase;
 
 final class StorageFactoryTest extends TestCase
@@ -24,11 +26,23 @@ final class StorageFactoryTest extends TestCase
     {
         $this->tempDir = sys_get_temp_dir().'/storage_test_'.uniqid();
         $this->factory = new StorageFactory($this->tempDir, 3600, 2);
+
+        $_COOKIE = [];
+
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
     }
 
     protected function tearDown(): void
     {
         $this->removeDirectory($this->tempDir);
+
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_destroy();
+        }
+
+        $_COOKIE = [];
     }
 
     private function removeDirectory(string $directory): void
@@ -84,6 +98,26 @@ final class StorageFactoryTest extends TestCase
         $this->assertInstanceOf(StorageInterface::class, $storage);
     }
 
+    public function test_create_session_storage(): void
+    {
+        // Act
+        $storage = $this->factory->create(StorageSystem::SESSION);
+
+        // Assert
+        $this->assertInstanceOf(SessionStorage::class, $storage);
+        $this->assertInstanceOf(StorageInterface::class, $storage);
+    }
+
+    public function test_create_cookie_storage(): void
+    {
+        // Act
+        $storage = $this->factory->create(StorageSystem::COOKIE);
+
+        // Assert
+        $this->assertInstanceOf(CookieStorage::class, $storage);
+        $this->assertInstanceOf(StorageInterface::class, $storage);
+    }
+
     // ============================================================
     // Specific Creation Methods Tests
     // ============================================================
@@ -113,6 +147,45 @@ final class StorageFactoryTest extends TestCase
 
         // Assert
         $this->assertInstanceOf(CacheStorage::class, $storage);
+    }
+
+    public function test_create_session_storage_method(): void
+    {
+        // Arrange
+        $namespace = 'test_namespace';
+
+        // Act
+        $storage = $this->factory->createSessionStorage($namespace);
+
+        // Assert
+        $this->assertInstanceOf(SessionStorage::class, $storage);
+        $this->assertSame($namespace, $storage->getNamespace());
+    }
+
+    public function test_create_cookie_storage_method(): void
+    {
+        // Arrange
+        $prefix = 'test_';
+        $path = '/admin';
+
+        // Act
+        $storage = $this->factory->createCookieStorage(
+            prefix: $prefix,
+            path: $path,
+            secure: true,
+            httpOnly: false,
+            sameSite: 'Strict'
+        );
+
+        // Assert
+        $this->assertInstanceOf(CookieStorage::class, $storage);
+        $this->assertSame($prefix, $storage->getPrefix());
+        $this->assertSame($path, $storage->getPath());
+        $this->assertTrue($storage->isSecure());
+        $this->assertFalse($storage->isHttpOnly());
+        $this->assertSame('Strict', $storage->getSameSite());
+
+        $storage->clear();
     }
 
     public function test_create_cache_storage_with_custom_driver(): void
@@ -248,7 +321,6 @@ final class StorageFactoryTest extends TestCase
         // Assert
         $this->assertInstanceOf(JsonlStorage::class, $storage);
 
-        // Vérifier que le storage a été créé avec la bonne configuration
         $stats = $storage->getStats();
         $this->assertSame($this->tempDir.'/test_data', $stats->base_path);
         $this->assertSame(1800, $stats->ttl);
@@ -263,10 +335,17 @@ final class StorageFactoryTest extends TestCase
         $memory = $factory->create(StorageSystem::MEMORY);
         $jsonl = $factory->create(StorageSystem::JSONL);
         $cache = $factory->create(StorageSystem::CACHE);
+        $session = $factory->create(StorageSystem::SESSION);
+        $cookie = $factory->create(StorageSystem::COOKIE);
 
         // Assert
         $this->assertInstanceOf(MemoryStorage::class, $memory);
         $this->assertInstanceOf(JsonlStorage::class, $jsonl);
         $this->assertInstanceOf(CacheStorage::class, $cache);
+        $this->assertInstanceOf(SessionStorage::class, $session);
+        $this->assertInstanceOf(CookieStorage::class, $cookie);
+
+        $cookie->clear();
+        $session->clear();
     }
 }
