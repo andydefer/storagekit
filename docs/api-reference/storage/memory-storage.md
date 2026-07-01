@@ -2,7 +2,7 @@
 
 ## Description
 
-MemoryStorage est une implémentation en mémoire de l'interface `StorageInterface` utilisée par les structures de données d'AlgoKIT pour la persistance des données.
+MemoryStorage est une implémentation de stockage en mémoire utilisant un tableau PHP natif. Les données sont conservées dans la RAM et sont perdues à la fin de l'exécution du script.
 
 ## Hiérarchie / Implémentations
 
@@ -15,12 +15,12 @@ StorageInterface
 
 ## Rôle principal
 
-MemoryStorage fournit un stockage en mémoire (RAM) pour les données des structures probabilistes (BloomFilter, CountMinSketch, HyperLogLog, Trie, etc.). Les données sont conservées dans un tableau PHP associatif et sont perdues à la fin de l'exécution du script. Idéal pour les tests, le développement et les applications monolythiques où la persistance entre les requêtes n'est pas nécessaire.
+MemoryStorage fournit un stockage ultra-rapide en mémoire (RAM) pour les données de l'application. Idéal pour les environnements de test, le développement, et les données éphémères qui n'ont pas besoin de persistance entre les requêtes.
 
 ## Installation
 
 ```bash
-composer require andydefer/algokit
+composer require andydefer/storage-kit
 ```
 
 ## API / Méthodes publiques
@@ -32,7 +32,7 @@ Récupère une valeur stockée avec une clé donnée.
 | Paramètre | Type | Description |
 |-----------|------|-------------|
 | `$key` | `string` | Clé d'identification |
-| `$default` | `mixed` | Valeur par défaut si la clé n'existe pas (défaut: null) |
+| `$default` | `mixed` | Valeur par défaut si la clé n'existe pas |
 
 **Retourne :** `mixed` - La valeur stockée ou la valeur par défaut
 
@@ -46,9 +46,31 @@ $missing = $storage->get('nonexistent', 'default'); // 'default'
 
 ---
 
+### `getMultiple(array $keys): array`
+
+Récupère plusieurs valeurs en une seule opération.
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$keys` | `string[]` | Liste des clés à récupérer |
+
+**Retourne :** `array<string, mixed>` - Tableau associatif clé → valeur
+
+**Exemple :**
+```php
+$result = $storage->getMultiple(['user_123', 'user_456', 'user_789']);
+// [
+//     'user_123' => ['name' => 'John'],
+//     'user_456' => ['name' => 'Jane'],
+//     'user_789' => null
+// ]
+```
+
+---
+
 ### `set(string $key, mixed $value): void`
 
-Stocke une valeur avec une clé donnée.
+Stocke une valeur avec une clé donnée. Écrase toute valeur existante.
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
@@ -59,36 +81,71 @@ Stocke une valeur avec une clé donnée.
 
 **Exemple :**
 ```php
-$storage = new MemoryStorage();
-$storage->set('config', ['debug' => true, 'timeout' => 30]);
-$storage->set('count', 42);
+$storage->set('user_123', ['name' => 'John', 'age' => 30]);
+$storage->set('counter', 42);
+```
+
+---
+
+### `setMultiple(array $items): void`
+
+Stocke plusieurs valeurs en une seule opération.
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$items` | `array<string, mixed>` | Tableau associatif clé → valeur |
+
+**Retourne :** `void`
+
+**Exemple :**
+```php
+$storage->setMultiple([
+    'user_123' => ['name' => 'John'],
+    'user_456' => ['name' => 'Jane'],
+    'user_789' => ['name' => 'Bob'],
+]);
 ```
 
 ---
 
 ### `delete(string $key): bool`
 
-Supprime une valeur stockée avec une clé donnée.
+Supprime une valeur par sa clé.
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$key` | `string` | Clé d'identification |
+| `$key` | `string` | Clé à supprimer |
 
 **Retourne :** `bool` - `true` si la clé existait et a été supprimée, `false` sinon
 
 **Exemple :**
 ```php
-$storage = new MemoryStorage();
-$storage->set('temp_data', 'value');
-$deleted = $storage->delete('temp_data'); // true
+$deleted = $storage->delete('user_123'); // true
 $notDeleted = $storage->delete('nonexistent'); // false
+```
+
+---
+
+### `deleteMultiple(array $keys): void`
+
+Supprime plusieurs clés en une seule opération.
+
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$keys` | `string[]` | Liste des clés à supprimer |
+
+**Retourne :** `void`
+
+**Exemple :**
+```php
+$storage->deleteMultiple(['user_123', 'user_456', 'user_789']);
 ```
 
 ---
 
 ### `exists(string $key): bool`
 
-Vérifie si une clé existe dans le storage.
+Vérifie si une clé existe.
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
@@ -98,109 +155,121 @@ Vérifie si une clé existe dans le storage.
 
 **Exemple :**
 ```php
-$storage = new MemoryStorage();
-$storage->set('user_id', 123);
-$exists = $storage->exists('user_id'); // true
-$notExists = $storage->exists('unknown'); // false
+if ($storage->exists('user_123')) {
+    $user = $storage->get('user_123');
+}
+```
+
+---
+
+### `clear(): void`
+
+Supprime toutes les données stockées.
+
+**Retourne :** `void`
+
+**Exemple :**
+```php
+$storage->clear(); // Vide tout le storage
 ```
 
 ## Cas d'utilisation
 
-### Cas 1 : Stockage simple de données
+### Cas 1 : Cache de résultats d'API
 
 ```php
-use AndyDefer\StorageKit\Storage\MemoryStorage;
-
-$storage = new MemoryStorage();
-
-// Stocker des données
-$storage->set('user_123', ['name' => 'John', 'email' => 'john@example.com']);
-$storage->set('counter', 0);
-
-// Récupérer et modifier
-$counter = $storage->get('counter', 0);
-$storage->set('counter', $counter + 1);
-
-// Vérifier l'existence
-if ($storage->exists('user_123')) {
-    $user = $storage->get('user_123');
+class ApiClient
+{
+    private MemoryStorage $cache;
+    
+    public function __construct()
+    {
+        $this->cache = new MemoryStorage();
+    }
+    
+    public function getUsers(): array
+    {
+        $cacheKey = 'api_users';
+        
+        if ($this->cache->exists($cacheKey)) {
+            return $this->cache->get($cacheKey);
+        }
+        
+        $users = $this->fetchFromApi('/users');
+        $this->cache->set($cacheKey, $users);
+        
+        return $users;
+    }
 }
-
-// Supprimer
-$storage->delete('session_token');
 ```
 
-### Cas 2 : Utilisation avec AlgoKIT
+### Cas 2 : Session utilisateur temporaire
 
 ```php
-use AndyDefer\StorageKit\Algorithms\Trie;
-use AndyDefer\StorageKit\Storage\MemoryStorage;
-
-$storage = new MemoryStorage();
-
-// Le storage est injecté dans les structures
-$trie = new Trie($storage, 'autocomplete');
-$bloom = new BloomFilter($storage, 10000, 3, 'url_index');
-
-// Les données sont automatiquement sauvegardées
-$trie->insert('laravel');
-$trie->insert('php');
-
-// Les données peuvent être récupérées depuis une nouvelle instance
-$trie2 = new Trie($storage, 'autocomplete');
-$results = $trie2->search('la'); // Retourne 'laravel'
-```
-
-### Cas 3 : Nettoyage des données
-
-```php
-class CacheManager
+class SessionManager
 {
     private MemoryStorage $storage;
-    private array $keys = [];
+    private string $sessionId;
     
-    public function __construct(MemoryStorage $storage)
+    public function __construct(string $sessionId)
     {
-        $this->storage = $storage;
+        $this->storage = new MemoryStorage();
+        $this->sessionId = $sessionId;
     }
     
     public function set(string $key, mixed $value): void
     {
-        $this->storage->set($key, $value);
-        $this->keys[] = $key;
+        $this->storage->set($this->sessionId . '_' . $key, $value);
     }
     
     public function get(string $key, mixed $default = null): mixed
     {
-        return $this->storage->get($key, $default);
+        return $this->storage->get($this->sessionId . '_' . $key, $default);
     }
     
-    public function clearAll(): void
+    public function clear(): void
     {
-        foreach ($this->keys as $key) {
-            $this->storage->delete($key);
-        }
-        $this->keys = [];
+        $this->storage->clear();
+    }
+}
+```
+
+### Cas 3 : Compteur en mémoire
+
+```php
+class Counter
+{
+    private MemoryStorage $storage;
+    
+    public function __construct()
+    {
+        $this->storage = new MemoryStorage();
+        $this->storage->set('counter', 0);
     }
     
-    public function has(string $key): bool
+    public function increment(): int
     {
-        return $this->storage->exists($key);
+        $count = $this->storage->get('counter', 0) + 1;
+        $this->storage->set('counter', $count);
+        return $count;
+    }
+    
+    public function get(): int
+    {
+        return $this->storage->get('counter', 0);
+    }
+    
+    public function reset(): void
+    {
+        $this->storage->set('counter', 0);
     }
 }
 
 // Utilisation
-$storage = new MemoryStorage();
-$cache = new CacheManager($storage);
-
-$cache->set('data1', 'value1');
-$cache->set('data2', 'value2');
-
-echo $cache->get('data1') . "\n"; // 'value1'
-echo $cache->has('data2') . "\n"; // true
-
-$cache->clearAll();
-echo $cache->has('data1') . "\n"; // false
+$counter = new Counter();
+echo $counter->increment(); // 1
+echo $counter->increment(); // 2
+echo $counter->get(); // 2
 ```
 
 ## Flux d'exécution
@@ -216,11 +285,11 @@ return $this->data[$key] ?? $default
     ↓
 exists($key)
     ↓
-return isset($this->data[$key])
+return array_key_exists($key, $this->data)
     ↓
 delete($key)
     ↓
-if isset($this->data[$key]) → unset → return true
+if array_key_exists → unset → return true
 else → return false
 ```
 
@@ -237,37 +306,27 @@ else → return false
 
 ## Intégration
 
-### Avec les structures AlgoKIT
+### Avec StorageFactory
 
-MemoryStorage est utilisé par toutes les structures probabilistes :
+MemoryStorage est créé via la factory :
 
 ```php
-// Injection unique
-$storage = new MemoryStorage();
+use AndyDefer\StorageKit\Factory\StorageFactory;
+use AndyDefer\StorageKit\Enums\StorageSystem;
 
-// Toutes les structures partagent le même storage
-$trie = new Trie($storage, 'dict');
-$bloom = new BloomFilter($storage, 10000, 3, 'bloom');
-$cms = new CountMinSketch($storage, 1000, 5, 'cms');
-$hll = new HyperLogLog($storage, 14, 'hll');
-$topK = new TopK($storage, 10, 'topk');
-$bkTree = new BKTree($storage, 'bktree');
+$factory = new StorageFactory();
+$storage = $factory->create(StorageSystem::MEMORY);
 ```
 
-### Données partagées
-
-Le même storage peut être utilisé par plusieurs instances :
+### Avec les structures AlgoKIT
 
 ```php
+use AndyDefer\AlgoKIT\Algorithms\Trie;
+use AndyDefer\StorageKit\Storage\MemoryStorage;
+
 $storage = new MemoryStorage();
-
-// Instance 1 : Insertion
-$trie1 = new Trie($storage, 'shared_dict');
-$trie1->insert('laravel');
-
-// Instance 2 : Récupération (partage les données)
-$trie2 = new Trie($storage, 'shared_dict');
-$results = $trie2->search('la'); // Retourne 'laravel'
+$trie = new Trie($storage, 'autocomplete');
+$trie->insert('laravel');
 ```
 
 ## Performance
@@ -278,8 +337,12 @@ $results = $trie2->search('la'); // Retourne 'laravel'
 | `set()` | O(1) | Écriture directe |
 | `exists()` | O(1) | Vérification directe |
 | `delete()` | O(1) | Suppression directe |
+| `getMultiple()` | O(n) | n = nombre de clés |
+| `setMultiple()` | O(n) | n = nombre d'éléments |
+| `deleteMultiple()` | O(n) | n = nombre de clés |
+| `clear()` | O(1) | Réinitialisation du tableau |
 
-**Mémoire :** Les données sont conservées en RAM pendant toute la durée de vie du script. La mémoire utilisée dépend du nombre et de la taille des données stockées.
+**Mémoire :** Les données sont conservées en RAM pendant toute la durée de vie du script.
 
 ## Compatibilité
 
@@ -298,80 +361,52 @@ declare(strict_types=1);
 
 use AndyDefer\StorageKit\Storage\MemoryStorage;
 
-// 1. Initialisation
+// 1. Création
 $storage = new MemoryStorage();
 
 // 2. Stockage de différents types
-echo "2. Stockage de différents types:\n";
 $storage->set('string', 'Hello World');
 $storage->set('integer', 42);
 $storage->set('float', 3.14);
 $storage->set('boolean', true);
 $storage->set('array', ['a', 'b', 'c']);
-$storage->set('object', new stdClass());
+$storage->set('null', null);
 
-echo "  ✓ Tous les types sont stockés\n\n";
-
-// 3. Récupération avec et sans défaut
-echo "3. Récupération:\n";
-echo "  string: " . $storage->get('string') . "\n";
-echo "  integer: " . $storage->get('integer') . "\n";
-echo "  float: " . $storage->get('float') . "\n";
-echo "  boolean: " . ($storage->get('boolean') ? 'true' : 'false') . "\n";
-echo "  array: " . implode(', ', $storage->get('array', [])) . "\n";
-
-$missing = $storage->get('nonexistent', 'default_value');
-echo "  missing (with default): $missing\n\n";
+// 3. Récupération
+echo $storage->get('string'); // 'Hello World'
+echo $storage->get('integer'); // 42
+echo $storage->get('float'); // 3.14
+var_dump($storage->get('boolean')); // true
+print_r($storage->get('array')); // ['a', 'b', 'c']
+var_dump($storage->get('null')); // null
 
 // 4. Vérification d'existence
-echo "4. Vérification d'existence:\n";
-echo "  'string' existe: " . ($storage->exists('string') ? 'true' : 'false') . "\n";
-echo "  'nonexistent' existe: " . ($storage->exists('nonexistent') ? 'true' : 'false') . "\n\n";
+if ($storage->exists('string')) {
+    echo "Clé 'string' existe";
+}
 
-// 5. Suppression
-echo "5. Suppression:\n";
-$deleted = $storage->delete('boolean');
-echo "  'boolean' supprimé: " . ($deleted ? 'true' : 'false') . "\n";
-$deleted = $storage->delete('nonexistent');
-echo "  'nonexistent' supprimé: " . ($deleted ? 'true' : 'false') . "\n";
+// 5. Batch operations
+$storage->setMultiple([
+    'key1' => 'value1',
+    'key2' => 'value2',
+    'key3' => 'value3',
+]);
 
-echo "  'boolean' existe après suppression: " . ($storage->exists('boolean') ? 'true' : 'false') . "\n\n";
+$values = $storage->getMultiple(['key1', 'key2', 'key3']);
+print_r($values);
 
-// 6. Mise à jour
-echo "6. Mise à jour:\n";
-echo "  Avant: " . $storage->get('integer') . "\n";
-$storage->set('integer', 100);
-echo "  Après: " . $storage->get('integer') . "\n\n";
+// 6. Suppression
+$storage->delete('key1');
+$storage->deleteMultiple(['key2', 'key3']);
 
-// 7. Utilisation avec AlgoKIT
-echo "7. Utilisation avec AlgoKIT:\n";
-use AndyDefer\StorageKit\Algorithms\Trie;
-
-$trie = new Trie($storage, 'test_trie');
-$trie->insert('laravel');
-$trie->insert('python');
-
-$results = $trie->search('la');
-echo "  Trie: " . implode(', ', array_map(fn($r) => $r->word, $results->toArray())) . "\n";
-
-// 8. Nettoyage
-echo "\n8. Nettoyage:\n";
-$storage->delete('test_trie');
-$storage->delete('string');
-$storage->delete('integer');
-$storage->delete('float');
-$storage->delete('array');
-$storage->delete('object');
-
-echo "  ✓ Storage vidé\n";
+// 7. Nettoyage
+$storage->clear();
 ```
 
 ## Voir aussi
 
-- `StorageInterface` - Interface de persistance
+- `StorageInterface` - Interface de stockage
+- `StorageFactory` - Factory pour créer des storages
+- `JsonlStorage` - Stockage persistant JSONL
+- `CacheStorage` - Stockage avec cache
 - `Trie` - Structure de données utilisant MemoryStorage
-- `BloomFilter` - Structure de données utilisant MemoryStorage
-- `CountMinSketch` - Structure de données utilisant MemoryStorage
-- `HyperLogLog` - Structure de données utilisant MemoryStorage
-- `TopK` - Structure de données utilisant MemoryStorage
-- `BKTree` - Structure de données utilisant MemoryStorage
