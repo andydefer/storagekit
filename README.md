@@ -14,6 +14,7 @@
    - [CacheStorage - Stockage avec cache](#cachestorage---stockage-avec-cache)
    - [SessionStorage - Stockage en session](#sessionstorage---stockage-en-session)
    - [CookieStorage - Stockage en cookies](#cookiestorage---stockage-en-cookies)
+   - [SqliteStorage - Stockage SQLite](#sqlitestorage---stockage-sqlite)
 5. [La factory](#la-factory)
 6. [Cas d'usage réels](#cas-dusage-réels)
    - [Cache de sessions utilisateur](#cache-de-sessions-utilisateur)
@@ -21,6 +22,7 @@
    - [Cache multi-niveaux](#cache-multi-niveaux)
    - [Migration de données](#migration-de-données)
    - [Cache de résultats d'API](#cache-de-résultats-dapi)
+   - [Base de données embarquée](#base-de-données-embarquée)
 7. [Performance](#performance)
 8. [Intégration](#intégration)
    - [Avec Laravel](#avec-laravel)
@@ -32,7 +34,7 @@
 
 ## Introduction
 
-**StorageKit** est une bibliothèque PHP qui fournit des adaptateurs de stockage unifiés pour différents types de persistance. Elle propose une interface commune (`StorageInterface`) pour le stockage et la récupération de données, avec cinq implémentations :
+**StorageKit** est une bibliothèque PHP qui fournit des adaptateurs de stockage unifiés pour différents types de persistance. Elle propose une interface commune (`StorageInterface`) pour le stockage et la récupération de données, avec six implémentations :
 
 | Adaptateur | Description | Cas d'usage |
 |------------|-------------|-------------|
@@ -41,16 +43,18 @@
 | **CacheStorage** | Stockage avec cache (PhpFastCache) | Haute performance, TTL, multi-backends |
 | **SessionStorage** | Stockage en session PHP | Données utilisateur, authentification |
 | **CookieStorage** | Stockage en cookies navigateur | Préférences, données légères côté client |
+| **SqliteStorage** | Stockage SQLite ACID | Base de données embarquée, persistance fiable |
 
 ### Pourquoi StorageKit ?
 
 - ✅ **Interface unifiée** : La même API pour tous les storages
 - ✅ **Flexibilité** : Changez de storage sans modifier votre code
 - ✅ **Performance** : Choisissez le storage adapté à vos besoins
-- ✅ **Persistance** : Avec JSONL, Cache, Session ou Cookie, vos données survivent aux requêtes
+- ✅ **Persistance** : Avec JSONL, Cache, Session, Cookie ou SQLite, vos données survivent aux requêtes
 - ✅ **TTL** : Gérez l'expiration des données (CacheStorage, JsonlStorage)
 - ✅ **Statistiques** : Suivez les performances de votre cache
 - ✅ **Batch operations** : Optimisez les accès multiples
+- ✅ **Transactions ACID** : Avec SqliteStorage pour l'intégrité des données
 
 ---
 
@@ -64,7 +68,7 @@ composer require andydefer/storage-kit
 
 - PHP 8.1 ou supérieur
 - Extension `json` (activée par défaut)
-- (Optionnel) Extension `sqlite3` pour le driver SQLite de CacheStorage
+- (Optionnel) Extension `sqlite3` pour SqliteStorage et le driver SQLite de CacheStorage
 - **SessionStorage** : La session PHP doit être démarrée (`session_start()`)
 
 ---
@@ -88,6 +92,30 @@ interface StorageInterface
     public function clear(): void;
 }
 ```
+
+### SqliteStorageInterface (étendue)
+
+SqliteStorage ajoute des méthodes spécifiques aux bases de données :
+
+```php
+interface SqliteStorageInterface extends StorageInterface
+{
+    public function getDatabasePath(): string;
+    public function getTableName(): string;
+    public function isMemoryDatabase(): bool;
+    public function beginTransaction(): bool;
+    public function commit(): bool;
+    public function rollback(): bool;
+    public function inTransaction(): bool;
+    public function count(): int;
+    public function getDatabaseSize(): int;
+    public function getStats(): SqliteStorageStatsRecord;
+    public function vacuum(): bool;
+    public function getConnection(): SQLite3;
+    public function close(): bool;
+}
+```
+
 ---
 
 ## Les adaptateurs de stockage
@@ -493,6 +521,108 @@ $storage->clear();
 
 ---
 
+### SqliteStorage - Stockage SQLite
+
+**Description :** Stockage persistant utilisant SQLite comme base de données embarquée avec support ACID.
+
+**Caractéristiques :**
+- 💾 Persistant sur disque ou en mémoire
+- 🔒 ACID (Atomicité, Cohérence, Isolation, Durabilité)
+- 🔄 Transactions imbriquées
+- ⏰ Support des opérations batch
+- 📊 Statistiques détaillées
+- 🚀 Optimisation VACUUM
+- 📁 Création automatique des répertoires
+
+**Utilisation :**
+
+```php
+use AndyDefer\StorageKit\Storage\SqliteStorage;
+
+// Base de données persistante
+$storage = new SqliteStorage('/var/data/storage.db', 'storage_kv');
+
+// Base en mémoire (tests)
+$memoryDb = new SqliteStorage(':memory:', 'test_table');
+
+// Stockage
+$storage->set('user_123', ['name' => 'John', 'age' => 30]);
+$storage->set('config', ['debug' => true, 'version' => '1.0']);
+
+// Récupération
+$user = $storage->get('user_123');
+$config = $storage->get('config', []);
+
+// Batch operations
+$storage->setMultiple([
+    'user_456' => ['name' => 'Jane'],
+    'user_789' => ['name' => 'Bob'],
+]);
+
+$users = $storage->getMultiple(['user_123', 'user_456', 'user_789']);
+
+// Transactions
+$storage->beginTransaction();
+$storage->set('key1', 'value1');
+$storage->set('key2', 'value2');
+$storage->commit(); // Persiste tout ou rien
+
+// Transactions imbriquées
+$storage->beginTransaction(); // Transaction externe
+$storage->set('key1', 'value1');
+
+$storage->beginTransaction(); // Transaction interne
+$storage->set('key2', 'value2');
+$storage->commit(); // Commit interne
+
+$storage->commit(); // Commit externe
+
+// Vérification de transaction
+if ($storage->inTransaction()) {
+    echo "Transaction en cours";
+}
+
+// Annulation
+$storage->beginTransaction();
+$storage->set('temp_key', 'temp_value');
+$storage->rollback(); // Annule les modifications
+
+// Statistiques détaillées
+$stats = $storage->getStats();
+echo "Éléments: {$stats->total_items}\n";
+echo "Taille: " . round($stats->database_size / 1024, 2) . " KB\n";
+echo "Écritures: {$stats->write_count}\n";
+echo "Lectures: {$stats->read_count}\n";
+echo "Pages: {$stats->total_pages}\n";
+
+// Optimisation
+$storage->vacuum(); // Défragmente et récupère l'espace
+
+// Comptage
+$count = $storage->count();
+echo "Nombre d'éléments: {$count}\n";
+
+// Suppression
+$storage->delete('user_123');
+$storage->deleteMultiple(['user_456', 'user_789']);
+
+// Nettoyage complet
+$storage->clear();
+
+// Fermeture
+$storage->close();
+```
+
+**Cas d'usage :**
+- Base de données embarquée
+- Persistance d'état d'application
+- Configuration d'application
+- Logs structurés avec SQL
+- Stockage pour AlgoKIT
+- Applications sans serveur SQL externe
+
+---
+
 ## La factory
 
 **StorageFactory** simplifie la création des storages en centralisant la configuration.
@@ -515,6 +645,7 @@ $jsonl = $factory->create(StorageSystem::JSONL);
 $cache = $factory->create(StorageSystem::CACHE);
 $session = $factory->create(StorageSystem::SESSION);
 $cookie = $factory->create(StorageSystem::COOKIE);
+$sqlite = $factory->create(StorageSystem::SQLITE);
 ```
 
 **Configuration dynamique :**
@@ -556,6 +687,10 @@ $cookie = $factory->createCookieStorage(
 
 // Session avec namespace personnalisé
 $session = $factory->createSessionStorage('user_preferences');
+
+// SQLite personnalisé
+$sqlite = $factory->createSqliteStorage('/var/data/app.db', 'custom_kv');
+$persistent = $factory->createPersistentSqliteStorage('app.db', 'my_table');
 ```
 
 ---
@@ -627,186 +762,204 @@ if ($session) {
 $sessions->extendSession('user_123', 3600);
 ```
 
-### Préférences utilisateur (CookieStorage)
+### Persistance d'état d'application avec SQLite
 
 ```php
-class UserPreferences
+class ApplicationState
 {
-    private CookieStorage $storage;
+    private SqliteStorage $storage;
     
-    public function __construct()
+    public function __construct(string $dbPath)
     {
-        $this->storage = new CookieStorage('pref_', '+1 year');
+        $this->storage = new SqliteStorage($dbPath, 'app_state');
     }
     
-    public function setTheme(string $theme): void
+    public function setState(string $key, $value): void
     {
-        $this->storage->set('theme', $theme);
+        $this->storage->set($key, $value);
     }
     
-    public function getTheme(): string
+    public function getState(string $key, $default = null)
     {
-        return $this->storage->get('theme', 'light');
+        return $this->storage->get($key, $default);
     }
     
-    public function setLanguage(string $lang): void
+    public function getStats(): SqliteStorageStatsRecord
     {
-        $this->storage->set('lang', $lang);
+        return $this->storage->getStats();
     }
     
-    public function getLanguage(): string
+    public function optimize(): void
     {
-        return $this->storage->get('lang', 'en');
+        $this->storage->vacuum();
     }
     
-    public function setNotifications(bool $enabled): void
+    public function close(): void
     {
-        $this->storage->set('notifications', $enabled);
-    }
-    
-    public function getNotifications(): bool
-    {
-        return $this->storage->get('notifications', true);
-    }
-    
-    public function clear(): void
-    {
-        $this->storage->clear();
+        $this->storage->close();
     }
 }
 
 // Utilisation
-$prefs = new UserPreferences();
-$prefs->setTheme('dark');
-$prefs->setLanguage('fr');
-$prefs->setNotifications(false);
+$state = new ApplicationState('/var/data/app_state.db');
 
-echo $prefs->getTheme(); // 'dark'
-echo $prefs->getLanguage(); // 'fr'
-var_dump($prefs->getNotifications()); // false
+// Sauvegarde de l'état
+$state->setState('app_version', '1.2.3');
+$state->setState('last_cron_run', time());
+$state->setState('config', ['debug' => true, 'maintenance' => false]);
+
+// Récupération
+$version = $state->getState('app_version');
+$lastRun = $state->getState('last_cron_run', 0);
+
+echo "App version: $version\n";
+echo "Dernier cron: " . date('Y-m-d H:i:s', $lastRun) . "\n";
+
+$stats = $state->getStats();
+echo "Éléments: {$stats->total_items}\n";
+
+$state->close();
 ```
 
-### Session utilisateur (SessionStorage)
+### Cache multi-niveaux
 
 ```php
-class UserSession
+class MultiLevelCache
 {
-    private SessionStorage $storage;
+    private MemoryStorage $l1Cache; // Premier niveau (RAM)
+    private CacheStorage $l2Cache;  // Deuxième niveau (Cache)
+    private JsonlStorage $l3Cache;  // Troisième niveau (Persistant)
     
     public function __construct()
     {
-        session_start();
-        $this->storage = new SessionStorage('user_session');
+        $this->l1Cache = new MemoryStorage();
+        $this->l2Cache = new CacheStorage(CacheDriver::FILES);
+        $this->l3Cache = new JsonlStorage('/var/data', 86400);
     }
     
-    public function login(int $userId, string $username, string $role): void
+    public function get(string $key, mixed $default = null): mixed
     {
-        $this->storage->setMultiple([
-            'user_id' => $userId,
-            'username' => $username,
-            'role' => $role,
-            'login_time' => time(),
-            'is_authenticated' => true,
+        // Niveau 1 - RAM
+        if ($value = $this->l1Cache->get($key)) {
+            return $value;
+        }
+        
+        // Niveau 2 - Cache
+        if ($value = $this->l2Cache->get($key)) {
+            $this->l1Cache->set($key, $value);
+            return $value;
+        }
+        
+        // Niveau 3 - Persistant
+        if ($value = $this->l3Cache->get($key)) {
+            $this->l2Cache->setWithTTL($key, $value, 3600);
+            $this->l1Cache->set($key, $value);
+            return $value;
+        }
+        
+        return $default;
+    }
+    
+    public function set(string $key, mixed $value, int $ttl = 3600): void
+    {
+        $this->l1Cache->set($key, $value);
+        $this->l2Cache->setWithTTL($key, $value, $ttl);
+        $this->l3Cache->set($key, $value);
+    }
+    
+    public function clear(): void
+    {
+        $this->l1Cache->clear();
+        $this->l2Cache->clear();
+        $this->l3Cache->clear();
+    }
+}
+
+// Utilisation
+$cache = new MultiLevelCache();
+$cache->set('user_data', ['name' => 'John']);
+
+$data = $cache->get('user_data'); // Récupération rapide depuis RAM
+```
+
+### Base de données embarquée avec SQLite
+
+```php
+class ProductCatalog
+{
+    private SqliteStorage $storage;
+    
+    public function __construct(string $dbPath)
+    {
+        $this->storage = new SqliteStorage($dbPath, 'products');
+    }
+    
+    public function addProduct(string $id, string $name, float $price): void
+    {
+        $this->storage->set("product:{$id}", [
+            'id' => $id,
+            'name' => $name,
+            'price' => $price,
+            'created_at' => time(),
         ]);
     }
     
-    public function isAuthenticated(): bool
+    public function getProduct(string $id): ?array
     {
-        return $this->storage->get('is_authenticated', false);
+        return $this->storage->get("product:{$id}");
     }
     
-    public function getUserId(): ?int
+    public function updatePrice(string $id, float $newPrice): void
     {
-        return $this->storage->get('user_id');
+        $product = $this->getProduct($id);
+        if ($product) {
+            $product['price'] = $newPrice;
+            $product['updated_at'] = time();
+            $this->storage->set("product:{$id}", $product);
+        }
     }
     
-    public function getUsername(): ?string
+    public function deleteProduct(string $id): void
     {
-        return $this->storage->get('username');
+        $this->storage->delete("product:{$id}");
     }
     
-    public function getRole(): ?string
+    public function getStats(): SqliteStorageStatsRecord
     {
-        return $this->storage->get('role');
+        return $this->storage->getStats();
     }
     
-    public function getLoginTime(): ?int
+    public function optimize(): void
     {
-        return $this->storage->get('login_time');
+        $this->storage->vacuum();
     }
     
-    public function logout(): void
+    public function close(): void
     {
-        $this->storage->clear();
+        $this->storage->close();
     }
 }
 
 // Utilisation
-$session = new UserSession();
-$session->login(123, 'john_doe', 'admin');
+$catalog = new ProductCatalog('/var/data/products.db');
 
-if ($session->isAuthenticated()) {
-    echo "Bienvenue " . $session->getUsername();
-    echo "Rôle: " . $session->getRole();
-}
-```
+// Ajout de produits
+$catalog->addProduct('p1', 'Laptop', 999.99);
+$catalog->addProduct('p2', 'Smartphone', 599.99);
+$catalog->addProduct('p3', 'Headphones', 89.99);
 
-### Panier d'achat en cookies
+// Récupération
+$product = $catalog->getProduct('p1');
+echo $product['name'] . " - " . $product['price'] . "€\n";
 
-```php
-class CookieCart
-{
-    private CookieStorage $storage;
-    
-    public function __construct()
-    {
-        $this->storage = new CookieStorage('cart_', '+7 days');
-    }
-    
-    public function addItem(string $productId, int $quantity = 1): void
-    {
-        $cart = $this->storage->get('items', []);
-        $cart[$productId] = ($cart[$productId] ?? 0) + $quantity;
-        $this->storage->set('items', $cart);
-    }
-    
-    public function removeItem(string $productId): void
-    {
-        $cart = $this->storage->get('items', []);
-        unset($cart[$productId]);
-        $this->storage->set('items', $cart);
-    }
-    
-    public function getItems(): array
-    {
-        return $this->storage->get('items', []);
-    }
-    
-    public function getTotalItems(): int
-    {
-        return array_sum($this->getItems());
-    }
-    
-    public function getItemCount(): int
-    {
-        return count($this->getItems());
-    }
-    
-    public function clear(): void
-    {
-        $this->storage->delete('items');
-    }
-}
+// Mise à jour
+$catalog->updatePrice('p1', 899.99);
 
-// Utilisation
-$cart = new CookieCart();
-$cart->addItem('p1', 2);
-$cart->addItem('p2', 1);
-$cart->addItem('p1', 1);
+// Statistiques
+$stats = $catalog->getStats();
+echo "Produits: {$stats->total_items}\n";
 
-echo $cart->getTotalItems(); // 4
-echo $cart->getItemCount(); // 2
-print_r($cart->getItems()); // ['p1' => 3, 'p2' => 1]
+$catalog->close();
 ```
 
 ---
@@ -815,13 +968,14 @@ print_r($cart->getItems()); // ['p1' => 3, 'p2' => 1]
 
 ### Comparatif des storages
 
-| Storage | Vitesse | Persistance | TTL | Mémoire | Cas d'usage |
-|---------|---------|-------------|-----|---------|-------------|
-| **MemoryStorage** | ⚡⚡⚡ | ❌ | ❌ | 💾 | Tests, éphémère |
-| **SessionStorage** | ⚡⚡ | ✅ | ❌ | 💾 | Données utilisateur |
-| **CookieStorage** | ⚡⚡ | ✅ | ✅ | 💾 | Préférences client |
-| **CacheStorage** | ⚡⚡ | ✅ | ✅ | 💾 | Cache haute perf |
-| **JsonlStorage** | 🐌 | ✅ | ✅ | 💾💾 | Persistance |
+| Storage | Vitesse | Persistance | TTL | Transactions | Mémoire | Cas d'usage |
+|---------|---------|-------------|-----|--------------|---------|-------------|
+| **MemoryStorage** | ⚡⚡⚡ | ❌ | ❌ | ❌ | 💾 | Tests, éphémère |
+| **SessionStorage** | ⚡⚡ | ✅ | ❌ | ❌ | 💾 | Données utilisateur |
+| **CookieStorage** | ⚡⚡ | ✅ | ✅ | ❌ | 💾 | Préférences client |
+| **CacheStorage** | ⚡⚡ | ✅ | ✅ | ❌ | 💾 | Cache haute perf |
+| **JsonlStorage** | 🐌 | ✅ | ✅ | ❌ | 💾💾 | Persistance |
+| **SqliteStorage** | ⚡ | ✅ | ❌ | ✅ | 💾 | Base de données ACID |
 
 ### Limitations
 
@@ -830,6 +984,7 @@ print_r($cart->getItems()); // ['p1' => 3, 'p2' => 1]
 | **CookieStorage** | ~4KB par cookie, ~50-150 cookies par domaine |
 | **SessionStorage** | Dépend de la configuration PHP (session.gc_maxlifetime) |
 | **JsonlStorage** | I/O disque, lent pour de nombreuses écritures |
+| **SqliteStorage** | 1 écriture simultanée, pas adapté aux gros volumes |
 
 ### Optimisations
 
@@ -849,12 +1004,14 @@ $cache = new CacheStorage();
 $cache->setWithTTL('popular_data', $data, 3600);
 ```
 
-**3. Utilisez JsonlStorage pour la persistance**
+**3. Utilisez SqliteStorage pour les données structurées**
 
 ```php
-// ✅ Bon - Données persistantes
-$storage = new JsonlStorage('/var/data');
-$storage->set('user_profiles', $profiles);
+// ✅ Bon - Données relationnelles et ACID
+$db = new SqliteStorage('/data/app.db');
+$db->beginTransaction();
+$db->setMultiple($data);
+$db->commit();
 ```
 
 **4. Batch operations pour de nombreux éléments**
@@ -869,16 +1026,27 @@ foreach ($items as $key => $value) {
 $storage->setMultiple($items);
 ```
 
-**5. Statistiques de performance**
+**5. Transactions SQLite pour l'intégrité des données**
 
 ```php
-// CacheStorage fournit des statistiques
-$stats = $cache->getStats();
-echo "Hit rate: " . ($stats->hits / ($stats->hits + $stats->misses) * 100) . "%";
+// ✅ Bon - Atomicité garantie
+$db->beginTransaction();
+try {
+    $db->set('balance', $newBalance);
+    $db->set('history', $newHistory);
+    $db->commit();
+} catch (Exception $e) {
+    $db->rollback();
+    throw $e;
+}
+```
 
-// Utilisez-les pour optimiser votre TTL
-if ($stats->misses > $stats->hits * 2) {
-    $cache->setTTL('frequent_key', 7200); // Augmentez le TTL
+**6. VACUUM périodique pour SQLite**
+
+```php
+// ✅ Bon - Optimisation périodique
+if ($storage->count() > 10000) {
+    $storage->vacuum();
 }
 ```
 
@@ -893,10 +1061,11 @@ if ($stats->misses > $stats->hits * 2) {
 ```php
 // config/storage-kit.php
 return [
-    'default' => env('STORAGE_KIT_DEFAULT', 'jsonl'),
+    'default' => env('STORAGE_KIT_DEFAULT', 'sqlite'),
     'paths' => [
         'base' => env('STORAGE_KIT_PATH', storage_path('storage-kit')),
         'cache' => env('STORAGE_KIT_CACHE_PATH', storage_path('storage-kit/cache')),
+        'sqlite' => env('STORAGE_KIT_SQLITE_PATH', storage_path('storage-kit/database.db')),
     ],
     'ttl' => env('STORAGE_KIT_TTL', 86400),
     'hash_levels' => env('STORAGE_KIT_HASH_LEVELS', 2),
@@ -914,6 +1083,9 @@ return [
         'secure' => env('STORAGE_KIT_COOKIE_SECURE', false),
         'http_only' => env('STORAGE_KIT_COOKIE_HTTP_ONLY', true),
         'same_site' => env('STORAGE_KIT_COOKIE_SAME_SITE', 'Lax'),
+    ],
+    'sqlite' => [
+        'table' => env('STORAGE_KIT_SQLITE_TABLE', 'storage_kv'),
     ],
 ];
 ```
@@ -945,10 +1117,19 @@ class StorageKitServiceProvider extends ServiceProvider
 
         $this->app->singleton(StorageInterface::class, function ($app) {
             $factory = $app->make(StorageFactory::class);
-            $default = config('storage-kit.default', 'jsonl');
-            $system = StorageSystem::tryFrom($default) ?? StorageSystem::JSONL;
+            $default = config('storage-kit.default', 'sqlite');
             
-            return $factory->create($system);
+            return match ($default) {
+                'sqlite' => $factory->createSqliteStorage(
+                    config('storage-kit.paths.sqlite'),
+                    config('storage-kit.sqlite.table', 'storage_kv')
+                ),
+                'jsonl' => $factory->create(StorageSystem::JSONL),
+                'cache' => $factory->create(StorageSystem::CACHE),
+                'session' => $factory->create(StorageSystem::SESSION),
+                'cookie' => $factory->create(StorageSystem::COOKIE),
+                default => $factory->create(StorageSystem::MEMORY),
+            };
         });
     }
 }
@@ -958,9 +1139,9 @@ class StorageKitServiceProvider extends ServiceProvider
 
 ```php
 use AndyDefer\StorageKit\Contracts\Storage\StorageInterface;
-use AndyDefer\StorageKit\Factory\StorageFactory;
+use AndyDefer\StorageKit\Storage\SqliteStorage;
 
-class UserController extends Controller
+class ProductController extends Controller
 {
     private StorageInterface $storage;
     
@@ -969,19 +1150,35 @@ class UserController extends Controller
         $this->storage = $storage;
     }
     
-    public function show(int $userId)
+    public function show(int $id)
     {
-        $cacheKey = 'user_' . $userId;
+        $cacheKey = 'product_' . $id;
         
         if ($this->storage->exists($cacheKey)) {
-            $user = $this->storage->get($cacheKey);
-            return response()->json(['user' => $user, 'cached' => true]);
+            $product = $this->storage->get($cacheKey);
+            return response()->json(['product' => $product, 'cached' => true]);
         }
         
-        $user = User::find($userId);
-        $this->storage->set($cacheKey, $user->toArray());
+        $product = Product::find($id);
+        $this->storage->set($cacheKey, $product->toArray());
         
-        return response()->json(['user' => $user, 'cached' => false]);
+        return response()->json(['product' => $product, 'cached' => false]);
+    }
+    
+    public function update(Request $request, int $id)
+    {
+        $this->storage->beginTransaction();
+        
+        try {
+            $product = Product::find($id);
+            $product->update($request->all());
+            $this->storage->set('product_' . $id, $product->toArray());
+            $this->storage->commit();
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            $this->storage->rollback();
+            throw $e;
+        }
     }
 }
 ```
@@ -991,35 +1188,48 @@ class UserController extends Controller
 ```php
 use AndyDefer\AlgoKIT\Algorithms\Trie;
 use AndyDefer\AlgoKIT\Algorithms\BloomFilter;
+use AndyDefer\AlgoKIT\Algorithms\CountMinSketch;
+use AndyDefer\AlgoKIT\Algorithms\HyperLogLog;
+use AndyDefer\AlgoKIT\Algorithms\TopK;
+use AndyDefer\AlgoKIT\Algorithms\BKTree;
 use AndyDefer\StorageKit\Factory\StorageFactory;
 use AndyDefer\StorageKit\Enums\StorageSystem;
+use AndyDefer\StorageKit\Storage\SqliteStorage;
 
 $factory = new StorageFactory('/var/data', 3600);
 
-// Trie avec JSONL (persistant)
-$jsonl = $factory->create(StorageSystem::JSONL);
-$trie = new Trie($jsonl, 'autocomplete');
-$trie->insert('laravel');
+// SQLite pour les structures persistantes (ACID)
+$sqlite = new SqliteStorage('/var/data/algo.db', 'algo_kv');
+$trie = new Trie($sqlite, 'autocomplete');
+$bkTree = new BKTree($sqlite, 'dictionary');
 
-// BloomFilter avec Memory (rapide)
+// CacheStorage pour les structures avec TTL
+$cache = $factory->create(StorageSystem::CACHE);
+$bloom = new BloomFilter($cache, 10000, 3, 'url_index');
+$cms = new CountMinSketch($cache, 10000, 5, 'frequencies');
+
+// Memory pour les structures temporaires
 $memory = $factory->create(StorageSystem::MEMORY);
-$bloom = new BloomFilter($memory, 10000, 3, 'url_index');
-$bloom->insert('https://example.com');
+$hll = new HyperLogLog($memory, 14, 'temp_visitors');
+$topK = new TopK($memory, 10, 'temp_top');
 
 // SessionStorage pour les données utilisateur
 session_start();
 $session = $factory->create(StorageSystem::SESSION);
-$session->set('user_id', 123);
+$trie = new Trie($session, 'user_autocomplete');
 
-// CookieStorage pour les préférences
-$cookie = $factory->create(StorageSystem::COOKIE);
-$cookie->set('theme', 'dark');
+// Utilisation combinée
+$trie->insert('laravel');
+$bloom->insert('https://example.com');
+$cms->add('php');
+$hll->add('user_123');
 
-// Utilisation
-$suggestions = $trie->search('la');
-$exists = $bloom->exists('https://example.com');
-$userId = $session->get('user_id');
-$theme = $cookie->get('theme', 'light');
+echo "Trie: " . implode(', ', array_map(fn($r) => $r->word, $trie->search('la')->toArray())) . "\n";
+echo "Bloom: " . ($bloom->exists('https://example.com') ? '✅' : '❌') . "\n";
+echo "CMS: " . $cms->count('php') . "\n";
+echo "HLL: " . $hll->count() . "\n";
+
+$sqlite->close();
 ```
 
 ---
@@ -1037,6 +1247,7 @@ class MultiStorageSystem
     private StorageInterface $cache;
     private StorageInterface $session;
     private StorageInterface $cookie;
+    private SqliteStorage $sqlite;
     
     public function __construct()
     {
@@ -1049,6 +1260,7 @@ class MultiStorageSystem
         $this->cache = $this->factory->create(StorageSystem::CACHE);
         $this->session = $this->factory->create(StorageSystem::SESSION);
         $this->cookie = $this->factory->create(StorageSystem::COOKIE);
+        $this->sqlite = $this->factory->createSqliteStorage('/var/data/multi.db', 'multi_kv');
     }
     
     public function getMemory(): StorageInterface
@@ -1075,6 +1287,16 @@ class MultiStorageSystem
     {
         return $this->cookie;
     }
+    
+    public function getSqlite(): SqliteStorage
+    {
+        return $this->sqlite;
+    }
+    
+    public function close(): void
+    {
+        $this->sqlite->close();
+    }
 }
 
 // Utilisation
@@ -1094,78 +1316,78 @@ $storage->getSession()->set('user_id', 123);
 
 // Préférences (Cookie)
 $storage->getCookie()->set('theme', 'dark');
+
+// Données structurées (SQLite)
+$sqlite = $storage->getSqlite();
+$sqlite->beginTransaction();
+$sqlite->setMultiple($batchData);
+$sqlite->commit();
+
+$stats = $sqlite->getStats();
+echo "SQLite: {$stats->total_items} éléments, " . round($stats->database_size/1024,2) . " KB\n";
+
+$storage->close();
 ```
 
-### Stockage multi-contexte
+### Application de monitoring avec SQLite
 
 ```php
-class MultiContextStorage
+class MonitoringSystem
 {
-    private StorageFactory $factory;
-    private array $storages = [];
+    private SqliteStorage $storage;
     
-    public function __construct(StorageFactory $factory)
+    public function __construct(string $dbPath)
     {
-        $this->factory = $factory;
+        $this->storage = new SqliteStorage($dbPath, 'monitoring');
     }
     
-    public function getStorage(string $context): StorageInterface
+    public function logMetric(string $name, float $value, array $tags = []): void
     {
-        if (!isset($this->storages[$context])) {
-            $this->storages[$context] = $this->factory->create(
-                $this->getSystemForContext($context)
-            );
-        }
-        
-        return $this->storages[$context];
+        $key = "metric:{$name}:" . time();
+        $this->storage->set($key, [
+            'name' => $name,
+            'value' => $value,
+            'tags' => $tags,
+            'timestamp' => time(),
+        ]);
     }
     
-    private function getSystemForContext(string $context): StorageSystem
+    public function getMetric(string $name, int $limit = 100): array
     {
-        return match ($context) {
-            'session' => StorageSystem::CACHE,
-            'cache' => StorageSystem::MEMORY,
-            'persistent' => StorageSystem::JSONL,
-            'user' => StorageSystem::SESSION,
-            'preferences' => StorageSystem::COOKIE,
-            default => StorageSystem::MEMORY,
-        };
+        // Récupération des métriques (implémentation simplifiée)
+        $results = [];
+        // ... logique de récupération
+        return $results;
     }
     
-    public function set(string $context, string $key, mixed $value): void
+    public function getStats(): SqliteStorageStatsRecord
     {
-        $this->getStorage($context)->set($key, $value);
+        return $this->storage->getStats();
     }
     
-    public function get(string $context, string $key, mixed $default = null): mixed
+    public function optimize(): void
     {
-        return $this->getStorage($context)->get($key, $default);
+        $this->storage->vacuum();
+    }
+    
+    public function close(): void
+    {
+        $this->storage->close();
     }
 }
 
 // Utilisation
-$factory = new StorageFactory('/var/data', 3600);
-$storage = new MultiContextStorage($factory);
+$monitor = new MonitoringSystem('/var/data/monitoring.db');
 
-// Session (cache)
-$storage->set('session', 'user_123', ['name' => 'John']);
+$monitor->logMetric('cpu_usage', 45.2, ['host' => 'server1']);
+$monitor->logMetric('memory_usage', 1024.5, ['host' => 'server1']);
+$monitor->logMetric('requests_per_second', 1500, ['endpoint' => '/api']);
 
-// Cache temporaire (mémoire)
-$storage->set('cache', 'api_response', $apiData);
+$stats = $monitor->getStats();
+echo "Métriques: {$stats->total_items}\n";
+echo "Taille: " . round($stats->database_size / 1024, 2) . " KB\n";
 
-// Persistant (JSONL)
-$storage->set('persistent', 'user_profiles', $profiles);
-
-// Utilisateur (session PHP)
-session_start();
-$storage->set('user', 'user_id', 123);
-
-// Préférences (cookies)
-$storage->set('preferences', 'theme', 'dark');
-
-// Récupération
-$user = $storage->get('session', 'user_123');
-$theme = $storage->get('preferences', 'theme', 'light');
+$monitor->close();
 ```
 
 ---
@@ -1181,7 +1403,7 @@ $theme = $storage->get('preferences', 'theme', 'light');
 | `JsonlStorageInterface` | Interface étendue pour JsonlStorage |
 | `SessionStorageInterface` | Interface étendue pour SessionStorage |
 | `CookieStorageInterface` | Interface étendue pour CookieStorage |
-| `StorageFactoryInterface` | Interface de la factory |
+| `SqliteStorageInterface` | Interface étendue pour SqliteStorage |
 
 ### Classes
 
@@ -1192,6 +1414,7 @@ $theme = $storage->get('preferences', 'theme', 'light');
 | `CacheStorage` | Stockage avec cache |
 | `SessionStorage` | Stockage en session |
 | `CookieStorage` | Stockage en cookies |
+| `SqliteStorage` | Stockage SQLite |
 | `StorageFactory` | Factory de storages |
 
 ### Enums
@@ -1208,11 +1431,11 @@ $theme = $storage->get('preferences', 'theme', 'light');
 | `CacheConfigRecord` | Configuration de CacheStorage |
 | `CacheStorageStatsRecord` | Statistiques de CacheStorage |
 | `JsonlStorageStatsRecord` | Statistiques de JsonlStorage |
+| `SqliteStorageStatsRecord` | Statistiques de SqliteStorage |
 | `JsonlStorageRecord` | Record pour JSONL |
 
 ---
 
 ## License
 
-MIT © [Andy Kani](https://github.com/andydefer)
----
+MIT © [Andy Defer](https://github.com/andydefer)

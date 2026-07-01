@@ -518,10 +518,8 @@ $storage->clear();
 
 ## Voir aussi
 
-- `StorageInterface` - Interface de stockage
-- `JsonlStorageInterface` - Interface étendue
-- `StorageFactory` - Factory pour créer des storages
-- `MemoryStorage` - Stockage en mémoire
-- `CacheStorage` - Stockage avec cache
-- `JsonlService` - Service JSONL sous-jacent
-- `KeyBasedPathStrategy` - Stratégie de chemin par clé
+- [`cache-storage`](cache-storage.md) - Stockage cache
+- [`cookie-storage`](cookie-storage.md) - Stockage cookie
+- [`memory-storage`](memory-storage.md) - Stockage mémoire
+- [`session-storage`](session-storage.md) - Stockage session
+- [`sqlite-storage`](sqlite-storage.md) - Stockage sqlite

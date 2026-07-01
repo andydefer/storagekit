@@ -575,13 +575,10 @@ if ($storage->isSessionActive()) {
 // 11. Nettoyage complet
 $storage->clear();
 ```
-
 ## Voir aussi
 
-- `SessionStorageInterface` - Interface du storage session
-- `StorageInterface` - Interface de base
-- `StorageFactory` - Factory pour créer des storages
-- `CookieStorage` - Stockage en cookies
-- `MemoryStorage` - Stockage en mémoire
-- `JsonlStorage` - Stockage JSONL
-- `CacheStorage` - Stockage avec cache
+- [`cache-storage`](cache-storage.md) - Stockage cache
+- [`cookie-storage`](cookie-storage.md) - Stockage cookie
+- [`jsonl-storage`](jsonl-storage.md) - Stockage jsonl
+- [`memory-storage`](memory-storage.md) - Stockage mémoire
+- [`sqlite-storage`](sqlite-storage.md) - Stockage sqlite

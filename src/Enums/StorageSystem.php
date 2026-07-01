@@ -45,4 +45,11 @@ enum StorageSystem: string
      * Data is limited by cookie size (4KB) and number of cookies.
      */
     case COOKIE = 'cookie';
+
+    /**
+     * SQLite-based persistent storage.
+     * Uses SQLite database for reliable, ACID-compliant storage.
+     * Good for moderate-sized datasets requiring persistence.
+     */
+    case SQLITE = 'sqlite';
 }

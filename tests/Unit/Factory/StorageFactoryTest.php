@@ -14,6 +14,7 @@ use AndyDefer\StorageKit\Storage\CookieStorage;
 use AndyDefer\StorageKit\Storage\JsonlStorage;
 use AndyDefer\StorageKit\Storage\MemoryStorage;
 use AndyDefer\StorageKit\Storage\SessionStorage;
+use AndyDefer\StorageKit\Storage\SqliteStorage;
 use PHPUnit\Framework\TestCase;
 
 final class StorageFactoryTest extends TestCase
@@ -118,6 +119,16 @@ final class StorageFactoryTest extends TestCase
         $this->assertInstanceOf(StorageInterface::class, $storage);
     }
 
+    public function test_create_sqlite_storage(): void
+    {
+        // Act
+        $storage = $this->factory->create(StorageSystem::SQLITE);
+
+        // Assert
+        $this->assertInstanceOf(SqliteStorage::class, $storage);
+        $this->assertInstanceOf(StorageInterface::class, $storage);
+    }
+
     // ============================================================
     // Specific Creation Methods Tests
     // ============================================================
@@ -186,6 +197,56 @@ final class StorageFactoryTest extends TestCase
         $this->assertSame('Strict', $storage->getSameSite());
 
         $storage->clear();
+    }
+
+    public function test_create_sqlite_storage_method(): void
+    {
+        // Arrange
+        $database = $this->tempDir.'/test.db';
+        $table = 'custom_kv';
+
+        // Act
+        $storage = $this->factory->createSqliteStorage($database, $table);
+
+        // Assert
+        $this->assertInstanceOf(SqliteStorage::class, $storage);
+        $this->assertSame($database, $storage->getDatabasePath());
+        $this->assertSame($table, $storage->getTableName());
+        $this->assertFalse($storage->isMemoryDatabase());
+
+        $storage->clear();
+        $storage->close();
+    }
+
+    public function test_create_sqlite_storage_method_in_memory(): void
+    {
+        // Act
+        $storage = $this->factory->createSqliteStorage(':memory:', 'test_table');
+
+        // Assert
+        $this->assertInstanceOf(SqliteStorage::class, $storage);
+        $this->assertSame(':memory:', $storage->getDatabasePath());
+        $this->assertSame('test_table', $storage->getTableName());
+        $this->assertTrue($storage->isMemoryDatabase());
+
+        $storage->clear();
+        $storage->close();
+    }
+
+    public function test_create_persistent_sqlite_storage(): void
+    {
+        // Act
+        $storage = $this->factory->createPersistentSqliteStorage('mydata.db', 'my_kv');
+
+        // Assert
+        $expectedPath = $this->tempDir.'/mydata.db';
+        $this->assertInstanceOf(SqliteStorage::class, $storage);
+        $this->assertSame($expectedPath, $storage->getDatabasePath());
+        $this->assertSame('my_kv', $storage->getTableName());
+        $this->assertFalse($storage->isMemoryDatabase());
+
+        $storage->clear();
+        $storage->close();
     }
 
     public function test_create_cache_storage_with_custom_driver(): void
@@ -337,6 +398,7 @@ final class StorageFactoryTest extends TestCase
         $cache = $factory->create(StorageSystem::CACHE);
         $session = $factory->create(StorageSystem::SESSION);
         $cookie = $factory->create(StorageSystem::COOKIE);
+        $sqlite = $factory->create(StorageSystem::SQLITE);
 
         // Assert
         $this->assertInstanceOf(MemoryStorage::class, $memory);
@@ -344,8 +406,11 @@ final class StorageFactoryTest extends TestCase
         $this->assertInstanceOf(CacheStorage::class, $cache);
         $this->assertInstanceOf(SessionStorage::class, $session);
         $this->assertInstanceOf(CookieStorage::class, $cookie);
+        $this->assertInstanceOf(SqliteStorage::class, $sqlite);
 
         $cookie->clear();
         $session->clear();
+        $sqlite->clear();
+        $sqlite->close();
     }
 }

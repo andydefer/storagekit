@@ -518,10 +518,8 @@ $storage->clear();
 
 ## Voir aussi
 
-- `StorageInterface` - Interface de stockage
-- `CacheStorageInterface` - Interface étendue
-- `StorageFactory` - Factory pour créer des storages
-- `MemoryStorage` - Stockage en mémoire
-- `JsonlStorage` - Stockage JSONL
-- `CacheDriver` - Enum des drivers supportés
-- `CacheStorageStatsRecord` - Record de statistiques
+- [`cookie-storage`](cookie-storage.md) - Stockage cookie
+- [`jsonl-storage`](jsonl-storage.md) - Stockage jsonl
+- [`memory-storage`](memory-storage.md) - Stockage mémoire
+- [`session-storage`](session-storage.md) - Stockage session
+- [`sqlite-storage`](sqlite-storage.md) - Stockage sqlite

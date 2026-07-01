@@ -14,15 +14,18 @@ use AndyDefer\StorageKit\Storage\CookieStorage;
 use AndyDefer\StorageKit\Storage\JsonlStorage;
 use AndyDefer\StorageKit\Storage\MemoryStorage;
 use AndyDefer\StorageKit\Storage\SessionStorage;
+use AndyDefer\StorageKit\Storage\SqliteStorage;
 
 /**
  * Factory for creating storage instances.
  *
- * Supports creation of MemoryStorage, JsonlStorage, CacheStorage, SessionStorage, and CookieStorage.
+ * Supports creation of MemoryStorage, JsonlStorage, CacheStorage, SessionStorage,
+ * CookieStorage, and SqliteStorage.
  *
  * @example
  * $factory = new StorageFactory('/var/data', 3600);
  * $storage = $factory->create(StorageSystem::JSONL);
+ * $sqlite = $factory->createSqliteStorage('/path/to/data.db');
  */
 final class StorageFactory implements StorageFactoryInterface
 {
@@ -50,6 +53,7 @@ final class StorageFactory implements StorageFactoryInterface
             StorageSystem::CACHE => $this->createCacheStorage(),
             StorageSystem::SESSION => $this->createSessionStorage(),
             StorageSystem::COOKIE => $this->createCookieStorage(),
+            StorageSystem::SQLITE => $this->createSqliteStorage(),
         };
     }
 
@@ -128,6 +132,36 @@ final class StorageFactory implements StorageFactoryInterface
             httpOnly: $httpOnly,
             sameSite: $sameSite
         );
+    }
+
+    /**
+     * Creates a SQLite storage instance.
+     *
+     * @param  string  $database  Path to SQLite database file (':memory:' for in-memory)
+     * @param  string  $table  Table name for key-value storage
+     * @return SqliteStorage The SQLite storage instance
+     */
+    public function createSqliteStorage(
+        string $database = ':memory:',
+        string $table = 'storage_kv'
+    ): SqliteStorage {
+        return new SqliteStorage($database, $table);
+    }
+
+    /**
+     * Creates a persistent SQLite storage with configured path.
+     *
+     * @param  string  $filename  Filename within base path
+     * @param  string  $table  Table name for key-value storage
+     * @return SqliteStorage The persistent SQLite storage instance
+     */
+    public function createPersistentSqliteStorage(
+        string $filename = 'storage.db',
+        string $table = 'storage_kv'
+    ): SqliteStorage {
+        $path = $this->basePath.'/'.ltrim($filename, '/');
+
+        return new SqliteStorage($path, $table);
     }
 
     public function setBasePath(string $basePath): self

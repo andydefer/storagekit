@@ -690,10 +690,8 @@ $storage->clear();
 
 ## Voir aussi
 
-- `CookieStorageInterface` - Interface du storage cookie
-- `StorageInterface` - Interface de base
-- `StorageFactory` - Factory pour créer des storages
-- `SessionStorage` - Stockage en session
-- `MemoryStorage` - Stockage en mémoire
-- `JsonlStorage` - Stockage JSONL
-- `CacheStorage` - Stockage avec cache
+- [`cache-storage`](cache-storage.md) - Stockage cache
+- [`jsonl-storage`](jsonl-storage.md) - Stockage jsonl
+- [`memory-storage`](memory-storage.md) - Stockage mémoire
+- [`session-storage`](session-storage.md) - Stockage session
+- [`sqlite-storage`](sqlite-storage.md) - Stockage sqlite

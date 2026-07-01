@@ -402,11 +402,10 @@ $storage->deleteMultiple(['key2', 'key3']);
 // 7. Nettoyage
 $storage->clear();
 ```
-
 ## Voir aussi
 
-- `StorageInterface` - Interface de stockage
-- `StorageFactory` - Factory pour créer des storages
-- `JsonlStorage` - Stockage persistant JSONL
-- `CacheStorage` - Stockage avec cache
-- `Trie` - Structure de données utilisant MemoryStorage
+- [`cache-storage`](cache-storage.md) - Stockage cache
+- [`cookie-storage`](cookie-storage.md) - Stockage cookie
+- [`jsonl-storage`](jsonl-storage.md) - Stockage jsonl
+- [`session-storage`](session-storage.md) - Stockage session
+- [`sqlite-storage`](sqlite-storage.md) - Stockage sqlite
